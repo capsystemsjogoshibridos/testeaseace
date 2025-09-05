@@ -5,9 +5,7 @@ import type { Rackard } from '../types';
 const REAL_COURT_HEIGHT_METERS = 11.88;
 const REAL_COURT_WIDTH_METERS = 8.23;
 const REAL_SERVICE_LINE_FROM_NET_METERS = 6.4;
-const STEP_LENGTH_METERS = 0.75; // Average step length
-const STEP_DETECTION_THRESHOLD = 12; // m/s^2 - needs tuning
-const STEP_COOLDOWN_MS = 500; // Minimum time between steps
+const WALKING_SPEED_MPS = 1.4; // Average walking speed in meters per second
 
 interface SpawnedCard {
   id: string;
@@ -21,16 +19,22 @@ export const RunCollectView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id' 
   const [spawnedCard, setSpawnedCard] = useState<SpawnedCard | null>(null);
   const [message, setMessage] = useState('Sincronize sua posição para começar.');
   const [courtSize, setCourtSize] = useState({ width: 0, height: 0 });
+  const [heading, setHeading] = useState(0);
+  const [isWalking, setIsWalking] = useState(false);
 
   const courtContainerRef = useRef<HTMLDivElement>(null);
-  const lastStepTime = useRef(0);
+  // FIX: Correctly initialize useRef for animationFrameId with null. 
+  // The previous code `useRef<number>()` was missing an initial value, causing a TypeScript error.
+  const animationFrameId = useRef<number | null>(null);
+  const lastFrameTime = useRef(performance.now());
   const currentHeading = useRef(0);
+  const motionTimeout = useRef<number | null>(null);
 
   // --- Dynamic Scaling ---
   const { pixelsPerMeter, playerSize, cardSize, collectionRadius, serviceLineCenterPos } = useMemo(() => {
     if (courtSize.width === 0) return { pixelsPerMeter: 0, playerSize: 0, cardSize: 0, collectionRadius: 0, serviceLineCenterPos: { x: 0, y: 0 } };
     const ppm = courtSize.width / REAL_COURT_WIDTH_METERS;
-    const pSize = ppm; // Player is 1 meter wide
+    const pSize = ppm;
     const serviceLineY = REAL_SERVICE_LINE_FROM_NET_METERS * ppm;
     const slcp = { x: courtSize.width / 2 - pSize / 2, y: serviceLineY - pSize / 2 };
     return { pixelsPerMeter: ppm, playerSize: pSize, cardSize: pSize, collectionRadius: pSize * 1.5, serviceLineCenterPos: slcp };
@@ -58,7 +62,7 @@ export const RunCollectView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id' 
     }
   }, [courtSize, isTracking, serviceLineCenterPos]);
 
-  // --- Card Spawning logic ---
+  // --- Card Spawning & Collection Logic ---
   const spawnNewCard = useCallback(() => {
     if (courtSize.width === 0) return;
     setSpawnedCard({
@@ -69,19 +73,17 @@ export const RunCollectView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id' 
 
   useEffect(() => {
     if (isTracking) {
-      const interval = setInterval(() => { if (!spawnedCard) spawnNewCard(); }, 30000); // Spawn every 30s if none
+      const interval = setInterval(() => { if (!spawnedCard) spawnNewCard(); }, 30000);
       if (!spawnedCard) spawnNewCard();
       return () => clearInterval(interval);
     }
   }, [isTracking, spawnNewCard, spawnedCard]);
 
-  // --- Card Collection Logic ---
   useEffect(() => {
     if (spawnedCard && courtSize.width > 0) {
       const dx = (playerPosition.x + playerSize / 2) - (spawnedCard.position.x + cardSize / 2);
       const dy = (playerPosition.y + playerSize / 2) - (spawnedCard.position.y + cardSize / 2);
       const distance = Math.sqrt(dx * dx + dy * dy);
-
       if (distance < collectionRadius) {
         setMessage('Rackard Coletada!');
         onCollect({ name: 'Nova Rackard', description: 'Coletada na corrida', power: Math.floor(Math.random() * 50) + 20 });
@@ -100,91 +102,121 @@ export const RunCollectView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id' 
         if (motionPermission === 'granted' && orientationPermission === 'granted') {
           setPermissionsGranted(true);
           return true;
-        } else {
-          setMessage("Permissão para sensores de movimento negada.");
-          return false;
         }
+        setMessage("Permissão para sensores de movimento negada.");
+        return false;
       } catch (error) {
         setMessage("Erro ao solicitar permissões de sensor.");
         return false;
       }
-    } else {
-      // For devices that don't require explicit permission (e.g., Android)
-      console.log("Motion sensor permissions not required or already granted.");
-      setPermissionsGranted(true);
-      return true;
     }
+    setPermissionsGranted(true);
+    return true;
   };
 
   const handleSync = async () => {
     const hasPermissions = permissionsGranted || await requestSensorPermissions();
     if (!hasPermissions) return;
-
     setMessage("Sincronizando posição inicial com GPS...");
     navigator.geolocation.getCurrentPosition(
-      (position) => {
+      () => {
         setPlayerPosition(serviceLineCenterPos);
         setIsTracking(true);
         setMessage('Sincronizado! Ande para se mover.');
       },
-      (error) => {
-        setMessage(`Erro de GPS: ${error.message}.`);
-      }
+      (error) => setMessage(`Erro de GPS: ${error.message}.`)
     );
   };
 
-  // --- Motion & Orientation Tracking ---
+  // --- Motion, Orientation & Game Loop ---
   useEffect(() => {
-    if (!isTracking || !permissionsGranted) return;
+    if (!isTracking || !permissionsGranted) {
+      setIsWalking(false);
+      return;
+    }
 
     const handleOrientation = (event: DeviceOrientationEvent) => {
-      // Compass direction (0=North, 90=East, 180=South, 270=West)
-      // FIX: Cast event to `any` to access the non-standard `webkitCompassHeading` property on iOS, and check for undefined to handle 0 values.
       const orientationEvent = event as any;
-      if (orientationEvent.webkitCompassHeading !== undefined) { // For iOS
-        currentHeading.current = orientationEvent.webkitCompassHeading;
-      } else {
-        currentHeading.current = event.alpha ?? 0;
+      let newHeading = 0;
+      if (orientationEvent.webkitCompassHeading !== undefined) {
+        newHeading = orientationEvent.webkitCompassHeading;
+      } else if (event.alpha !== null) {
+        newHeading = 360 - event.alpha;
       }
+      currentHeading.current = newHeading;
+      setHeading(newHeading);
     };
-    
+
     const handleMotion = (event: DeviceMotionEvent) => {
         const { acceleration } = event;
         if (!acceleration || acceleration.x === null || acceleration.y === null || acceleration.z === null) return;
-
         const magnitude = Math.sqrt(acceleration.x ** 2 + acceleration.y ** 2 + acceleration.z ** 2);
-        const now = Date.now();
+        
+        const WALKING_DETECT_THRESHOLD = 10.5;
+        const WALKING_STOP_THRESHOLD = 10.2;
 
-        if (now - lastStepTime.current > STEP_COOLDOWN_MS && magnitude > STEP_DETECTION_THRESHOLD) {
-            lastStepTime.current = now;
-
-            const angleRad = (currentHeading.current - 90) * (Math.PI / 180);
-            const stepPixels = STEP_LENGTH_METERS * pixelsPerMeter;
-
-            const dx = Math.cos(angleRad) * stepPixels;
-            const dy = Math.sin(angleRad) * stepPixels;
-
-            setPlayerPosition(prev => ({
-                x: Math.max(0, Math.min(courtSize.width - playerSize, prev.x + dx)),
-                y: Math.max(0, Math.min(courtSize.height - playerSize, prev.y - dy)), // Subtract dy to move up when angle is 0 (North)
-            }));
+        if (magnitude > WALKING_DETECT_THRESHOLD) {
+            if (!isWalking) setIsWalking(true);
+            if (motionTimeout.current) {
+                clearTimeout(motionTimeout.current);
+                motionTimeout.current = null;
+            }
+        } else if (magnitude < WALKING_STOP_THRESHOLD && isWalking) {
+            if (!motionTimeout.current) {
+                motionTimeout.current = window.setTimeout(() => {
+                    setIsWalking(false);
+                    motionTimeout.current = null;
+                }, 300);
+            }
         }
     };
     
     window.addEventListener('deviceorientation', handleOrientation);
     window.addEventListener('devicemotion', handleMotion);
 
+    const gameLoop = (currentTime: number) => {
+        const deltaTime = (currentTime - lastFrameTime.current) / 1000;
+        lastFrameTime.current = currentTime;
+
+        setPlayerPosition(prev => {
+            if (isWalking) {
+                const distanceMoved = WALKING_SPEED_MPS * deltaTime;
+                const distancePixels = distanceMoved * pixelsPerMeter;
+                const angleRad = (currentHeading.current - 90) * (Math.PI / 180);
+                const dx = Math.cos(angleRad) * distancePixels;
+                const dy = Math.sin(angleRad) * distancePixels;
+                return {
+                    x: Math.max(0, Math.min(courtSize.width - playerSize, prev.x + dx)),
+                    y: Math.max(0, Math.min(courtSize.height - playerSize, prev.y + dy)),
+                };
+            }
+            return prev;
+        });
+
+        if (animationFrameId.current !== null) {
+          animationFrameId.current = requestAnimationFrame(gameLoop);
+        }
+    };
+
+    lastFrameTime.current = performance.now();
+    animationFrameId.current = requestAnimationFrame(gameLoop);
+
     return () => {
       window.removeEventListener('deviceorientation', handleOrientation);
       window.removeEventListener('devicemotion', handleMotion);
+      if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
+      animationFrameId.current = null;
+      if (motionTimeout.current) clearTimeout(motionTimeout.current);
     };
-  }, [isTracking, permissionsGranted, pixelsPerMeter, playerSize, courtSize]);
-
+  }, [isTracking, permissionsGranted, isWalking, pixelsPerMeter, playerSize, courtSize]);
 
   return (
     <div className="p-4 flex flex-col items-center animate-fade-in">
         <h2 className="text-3xl font-bold mb-2 text-center text-tennis-accent">Run Collect</h2>
-        <p className="text-center text-tennis-light/70 mb-4 h-5">{message}</p>
+        <div className="text-center text-tennis-light/70 mb-4 h-10 flex flex-col justify-center items-center">
+          <p>{message}</p>
+          {isTracking && <p className="text-sm font-mono">Direção: {Math.round(heading)}° | {isWalking ? "Andando" : "Parado"}</p>}
+        </div>
         
         {!isTracking && (
              <button onClick={handleSync} className="mb-4 bg-tennis-green hover:bg-tennis-green/80 text-tennis-dark font-bold py-2 px-6 rounded-lg transition-colors">
@@ -199,9 +231,7 @@ export const RunCollectView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id' 
         >
             {courtSize.width > 0 && (
                 <>
-                    {/* Net */}
                     <div className="absolute top-0 left-0 w-full h-1 bg-white/50" />
-                    
                     {isTracking && (
                         <div 
                             className="absolute bg-tennis-accent rounded-full"
@@ -210,11 +240,9 @@ export const RunCollectView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id' 
                                 height: playerSize,
                                 top: playerPosition.y,
                                 left: playerPosition.x,
-                                transition: 'top 0.1s linear, left 0.1s linear'
                             }}
                         />
                     )}
-
                     {spawnedCard && isTracking && (
                         <div 
                             className="absolute bg-yellow-400 rounded-md animate-pulse"

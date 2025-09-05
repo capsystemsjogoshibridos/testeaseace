@@ -109,7 +109,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="w-full h-full max-w-5xl mx-auto bg-tennis-dark font-sans shadow-2xl rounded-2xl overflow-hidden flex flex-col">
+    <div className="w-full min-h-screen bg-tennis-dark font-sans flex flex-col">
       <Header setCurrentView={setCurrentView} currentView={currentView} />
       <main className="flex-grow overflow-y-auto">
         {renderView()}
