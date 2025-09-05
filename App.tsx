@@ -20,6 +20,8 @@ const App: React.FC = () => {
   const [selectedCard, setSelectedCard] = useState<Rackard | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [modalMessage, setModalMessage] = useState<string | null>(null);
+  
+  const apiKey = process.env.API_KEY;
 
   const addCardToDeck = useCallback((newCard: Rackard) => {
     setTennisDeck(prev => [...prev, newCard]);
@@ -29,7 +31,7 @@ const App: React.FC = () => {
   const handleGenerateAndAddCard = useCallback(async (baseCard?: Omit<Rackard, 'id'|'imageUrl'>) => {
       setIsLoading(true);
       try {
-        const generated = baseCard || await generateRandomRackard();
+        const generated = baseCard || await generateRandomRackard(apiKey);
         const newCard: Rackard = {
           ...generated,
           id: `card-${Date.now()}-${Math.random()}`,
@@ -43,7 +45,7 @@ const App: React.FC = () => {
       } finally {
         setIsLoading(false);
       }
-  }, []);
+  }, [apiKey]);
 
   const handleRandomButtonClick = useCallback(async () => {
       const card = await handleGenerateAndAddCard();
