@@ -1,7 +1,9 @@
 {
   "name": "Ás&Ace",
-  "description": "Colecione Rackards, jogue na quadra real e batalhe com seus amigos neste jogo de cartas de tênis.",
+  "description": "Colecione Rackards, jogue na quadra real e batalhe com seus amigos neste jogo de cartas deênis.",
   "requestFramePermissions": [
-    "geolocation"
+    "geolocation",
+    "deviceorientation",
+    "devicemotion"
   ]
 }

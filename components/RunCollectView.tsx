@@ -23,8 +23,6 @@ export const RunCollectView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id' 
   const [isWalking, setIsWalking] = useState(false);
 
   const courtContainerRef = useRef<HTMLDivElement>(null);
-  // FIX: Correctly initialize useRef for animationFrameId with null. 
-  // The previous code `useRef<number>()` was missing an initial value, causing a TypeScript error.
   const animationFrameId = useRef<number | null>(null);
   const lastFrameTime = useRef(performance.now());
   const currentHeading = useRef(0);
@@ -178,24 +176,21 @@ export const RunCollectView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id' 
         const deltaTime = (currentTime - lastFrameTime.current) / 1000;
         lastFrameTime.current = currentTime;
 
-        setPlayerPosition(prev => {
-            if (isWalking) {
-                const distanceMoved = WALKING_SPEED_MPS * deltaTime;
-                const distancePixels = distanceMoved * pixelsPerMeter;
-                const angleRad = (currentHeading.current - 90) * (Math.PI / 180);
-                const dx = Math.cos(angleRad) * distancePixels;
-                const dy = Math.sin(angleRad) * distancePixels;
-                return {
-                    x: Math.max(0, Math.min(courtSize.width - playerSize, prev.x + dx)),
-                    y: Math.max(0, Math.min(courtSize.height - playerSize, prev.y + dy)),
-                };
-            }
-            return prev;
-        });
-
-        if (animationFrameId.current !== null) {
-          animationFrameId.current = requestAnimationFrame(gameLoop);
+        if(isWalking) {
+          setPlayerPosition(prev => {
+              const distanceMoved = WALKING_SPEED_MPS * deltaTime;
+              const distancePixels = distanceMoved * pixelsPerMeter;
+              const angleRad = (currentHeading.current - 90) * (Math.PI / 180);
+              const dx = Math.cos(angleRad) * distancePixels;
+              const dy = Math.sin(angleRad) * distancePixels;
+              return {
+                  x: Math.max(0, Math.min(courtSize.width - playerSize, prev.x + dx)),
+                  y: Math.max(0, Math.min(courtSize.height - playerSize, prev.y + dy)),
+              };
+          });
         }
+        
+        animationFrameId.current = requestAnimationFrame(gameLoop);
     };
 
     lastFrameTime.current = performance.now();
@@ -219,7 +214,7 @@ export const RunCollectView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id' 
         </div>
         
         {!isTracking && (
-             <button onClick={handleSync} className="mb-4 bg-tennis-green hover:bg-tennis-green/80 text-tennis-dark font-bold py-2.5 px-8 rounded-lg transition-colors">
+             <button onClick={handleSync} className="mb-4 bg-tennis-green hover:bg-tennis-green/80 text-tennis-dark font-bold py-3 px-8 rounded-lg transition-colors">
                 Sincronizar e Iniciar
             </button>
         )}
@@ -231,6 +226,10 @@ export const RunCollectView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id' 
         >
             {courtSize.width > 0 && (
                 <>
+                    <div className="absolute top-0 left-0 w-full h-full" style={{
+                      backgroundImage: `linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(to right, rgba(255,255,255,0.1) 1px, transparent 1px)`,
+                      backgroundSize: `${pixelsPerMeter}px ${pixelsPerMeter}px`,
+                    }} />
                     <div className="absolute top-0 left-0 w-full h-1 bg-white/50" />
                     {isTracking && (
                         <div 

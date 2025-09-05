@@ -18,112 +18,47 @@ export const CourtCollectView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id
   const [spawnedCard, setSpawnedCard] = useState<SpawnedCard | null>(null);
   const [message, setMessage] = useState('Sincronize sua posição para começar.');
   const [courtSize, setCourtSize] = useState({ width: 0, height: 0 });
+  const [heading, setHeading] = useState(0);
+  const [displacement, setDisplacement] = useState({x: 0, y: 0});
 
   const courtContainerRef = useRef<HTMLDivElement>(null);
   const watchId = useRef<number | null>(null);
+  const animationFrameId = useRef<number | null>(null);
+  const targetPosition = useRef({x: 0, y: 0});
+  const currentPosition = useRef({x: 0, y: 0});
 
-  // --- Dynamic Scaling based on container size ---
   const { pixelsPerMeter, playerSize, cardSize, collectionRadius, serviceLineCenterPos } = useMemo(() => {
-    if (courtSize.width === 0) {
-      return { pixelsPerMeter: 0, playerSize: 0, cardSize: 0, collectionRadius: 0, serviceLineCenterPos: { x: 0, y: 0 } };
-    }
+    if (courtSize.width === 0) return { pixelsPerMeter: 0, playerSize: 0, cardSize: 0, collectionRadius: 0, serviceLineCenterPos: { x: 0, y: 0 } };
     const ppm = courtSize.width / REAL_COURT_WIDTH_METERS;
-    const pSize = ppm; // Player is 1 meter wide
+    const pSize = ppm;
     const serviceLineY = REAL_SERVICE_LINE_FROM_NET_METERS * ppm;
-    const slcp = {
-      x: courtSize.width / 2 - pSize / 2,
-      y: serviceLineY - pSize / 2,
-    };
-    return {
-      pixelsPerMeter: ppm,
-      playerSize: pSize,
-      cardSize: pSize,
-      collectionRadius: pSize * 1.5, // Collect within 1.5 meters
-      serviceLineCenterPos: slcp
-    };
+    const slcp = { x: courtSize.width / 2, y: serviceLineY };
+    return { pixelsPerMeter: ppm, playerSize: pSize, cardSize: pSize, collectionRadius: pSize * 1.5, serviceLineCenterPos: slcp };
   }, [courtSize]);
-
-  // --- Resize Observer to make court responsive ---
-  useEffect(() => {
-    const courtElement = courtContainerRef.current;
-    if (!courtElement) return;
-
-    const resizeObserver = new ResizeObserver(() => {
-      const containerWidth = courtElement.offsetWidth;
-      if (containerWidth > 0) {
-        const aspectRatio = REAL_COURT_HEIGHT_METERS / REAL_COURT_WIDTH_METERS;
-        setCourtSize({
-          width: containerWidth,
-          height: containerWidth * aspectRatio,
-        });
-      }
-    });
-
-    resizeObserver.observe(courtElement);
-    return () => resizeObserver.disconnect();
-  }, []);
-
-  // --- Set initial player position when court is sized ---
-  useEffect(() => {
-    if (courtSize.width > 0 && !isTracking) {
-      setPlayerPosition(serviceLineCenterPos);
-    }
-  }, [courtSize, isTracking, serviceLineCenterPos]);
-
-  const cardHint = useMemo(() => {
-    if (!spawnedCard) return "Nenhuma Rackard por perto... Continue se movendo!";
-    if (spawnedCard.position.y < courtSize.height * 0.3) {
-      return "Dica: A carta está perto da rede!";
-    } else if (spawnedCard.position.y > courtSize.height * 0.7) {
-      return "Dica: A carta está no fundo da sua quadra!";
-    } else {
-      return "Dica: A carta está no meio da sua quadra!";
-    }
-  }, [spawnedCard, courtSize.height]);
-
-  const spawnNewCard = useCallback(() => {
-    if (courtSize.width === 0) return;
-    setSpawnedCard({
-      id: `card-${Date.now()}`,
-      position: {
-        x: Math.random() * (courtSize.width - cardSize),
-        y: Math.random() * (courtSize.height - cardSize),
-      },
-    });
-  }, [courtSize, cardSize]);
-
-  useEffect(() => {
-    if (isTracking) {
-      const interval = setInterval(() => {
-        if (!spawnedCard) spawnNewCard();
-      }, (Math.random() * 2 + 1) * 60 * 1000); // 1 to 3 minutes
-      
-      if (!spawnedCard) spawnNewCard();
-      
-      return () => clearInterval(interval);
-    }
-  }, [isTracking, spawnNewCard, spawnedCard]);
-
-  useEffect(() => {
-    if (spawnedCard && courtSize.width > 0) {
-      const dx = (playerPosition.x + playerSize / 2) - (spawnedCard.position.x + cardSize / 2);
-      const dy = (playerPosition.y + playerSize / 2) - (spawnedCard.position.y + cardSize / 2);
-      const distance = Math.sqrt(dx * dx + dy * dy);
-
-      if (distance < collectionRadius) {
-        setMessage('Rackard Coletada!');
-        onCollect({ name: 'Nova Rackard', description: 'Coletada na quadra', power: Math.floor(Math.random() * 50) + 20 });
-        setSpawnedCard(null);
-        setTimeout(() => {
-          if(isTracking) setMessage(cardHint);
-        }, 2000);
+  
+  const requestOrientationPermission = async () => {
+    if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
+      try {
+        const permission = await (DeviceOrientationEvent as any).requestPermission();
+        if (permission === 'granted') {
+          return true;
+        }
+        setMessage("Permissão para sensor de orientação negada.");
+        return false;
+      } catch (error) {
+        setMessage("Erro ao solicitar permissão de sensor.");
+        return false;
       }
     }
-  }, [playerPosition, spawnedCard, onCollect, isTracking, cardHint, playerSize, cardSize, collectionRadius, courtSize]);
+    return true; // For browsers that don't require permission
+  };
 
-  const handleSync = () => {
+  const handleSync = async () => {
+    const orientationOK = await requestOrientationPermission();
+    if (!orientationOK) return;
+
     if (!navigator.geolocation) {
-      setMessage("Geolocalização não é suportada pelo seu navegador.");
+      setMessage("Geolocalização não é suportada.");
       return;
     }
     setMessage("Obtendo sua posição inicial...");
@@ -131,82 +66,180 @@ export const CourtCollectView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id
       (position) => {
         const { latitude, longitude } = position.coords;
         setStartCoords({ lat: latitude, lon: longitude });
-        setPlayerPosition(serviceLineCenterPos); // Reset player position on sync
+        currentPosition.current = serviceLineCenterPos;
+        targetPosition.current = serviceLineCenterPos;
+        setPlayerPosition(serviceLineCenterPos);
         setIsTracking(true);
-        setMessage('Sincronizado! Você foi posicionado na linha de saque.');
+        setMessage('Sincronizado! Mova-se no mundo real.');
       },
       (error) => {
-        setMessage(`Erro: ${error.message}. Verifique as permissões de localização.`);
+        setMessage(`Erro: ${error.message}.`);
       }
     );
   };
+  
+  // Game Loop for smooth movement
+  useEffect(() => {
+    if (isTracking) {
+      const loop = () => {
+        const dx = targetPosition.current.x - currentPosition.current.x;
+        const dy = targetPosition.current.y - currentPosition.current.y;
+        
+        // Smooth interpolation
+        currentPosition.current.x += dx * 0.1;
+        currentPosition.current.y += dy * 0.1;
+        
+        setPlayerPosition({ ...currentPosition.current });
+        animationFrameId.current = requestAnimationFrame(loop);
+      };
+      animationFrameId.current = requestAnimationFrame(loop);
+      
+      return () => {
+        if(animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
+      }
+    }
+  }, [isTracking]);
 
+  // GPS and Sensor Listeners
   useEffect(() => {
     if (isTracking && startCoords && pixelsPerMeter > 0) {
+      // Orientation
+      const handleOrientation = (event: DeviceOrientationEvent) => {
+        const orientationEvent = event as any;
+        let newHeading = 0;
+        if (orientationEvent.webkitCompassHeading !== undefined) {
+          newHeading = orientationEvent.webkitCompassHeading;
+        } else if (event.alpha !== null) {
+          newHeading = 360 - event.alpha;
+        }
+        setHeading(newHeading);
+      };
+      window.addEventListener('deviceorientation', handleOrientation);
+
+      // Position
       const handlePositionUpdate = (position: GeolocationPosition) => {
         const { latitude, longitude } = position.coords;
-
-        const lat1 = startCoords.lat * (Math.PI / 180);
-        const lat2 = latitude * (Math.PI / 180);
-        const lon1 = startCoords.lon * (Math.PI / 180);
-        const lon2 = longitude * (Math.PI / 180);
-        
         const R = 6371e3; // Earth radius in meters
-        const dx_meters = (lon2 - lon1) * Math.cos((lat1 + lat2) / 2) * R;
-        const dy_meters = (lat2 - lat1) * R;
+        const dLat = (latitude - startCoords.lat) * (Math.PI / 180);
+        const dLon = (longitude - startCoords.lon) * (Math.PI / 180);
+        const startLatRad = startCoords.lat * (Math.PI / 180);
+        
+        const dy_meters = dLat * R; // Forward/backward
+        const dx_meters = dLon * R * Math.cos(startLatRad); // Left/right
 
-        const newScreenX = serviceLineCenterPos.x + dx_meters * pixelsPerMeter;
-        const newScreenY = serviceLineCenterPos.y - dy_meters * pixelsPerMeter;
-
-        setPlayerPosition({
-          x: Math.max(0, Math.min(courtSize.width - playerSize, newScreenX)),
-          y: Math.max(0, Math.min(courtSize.height - playerSize, newScreenY)),
-        });
+        setDisplacement({ x: dx_meters, y: dy_meters });
+        
+        targetPosition.current = {
+          x: serviceLineCenterPos.x + dx_meters * pixelsPerMeter,
+          y: serviceLineCenterPos.y - dy_meters * pixelsPerMeter
+        };
       };
 
-      const handleError = (error: GeolocationPositionError) => {
-          setMessage("Perdemos sua localização. Tente sincronizar novamente.");
-          setIsTracking(false);
-      };
-
-      watchId.current = navigator.geolocation.watchPosition(handlePositionUpdate, handleError, { enableHighAccuracy: true });
+      watchId.current = navigator.geolocation.watchPosition(handlePositionUpdate, () => {}, { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 });
+      
       return () => {
+        window.removeEventListener('deviceorientation', handleOrientation);
         if (watchId.current !== null) navigator.geolocation.clearWatch(watchId.current);
       };
     }
-  }, [isTracking, startCoords, pixelsPerMeter, playerSize, courtSize, serviceLineCenterPos]);
+  }, [isTracking, startCoords, pixelsPerMeter, serviceLineCenterPos]);
+
+  // --- Resize Observer ---
+  useEffect(() => {
+    const courtElement = courtContainerRef.current;
+    if (!courtElement) return;
+    const resizeObserver = new ResizeObserver(() => {
+      const containerWidth = courtElement.offsetWidth;
+      if (containerWidth > 0) {
+        const aspectRatio = REAL_COURT_HEIGHT_METERS / REAL_COURT_WIDTH_METERS;
+        setCourtSize({ width: containerWidth, height: containerWidth * aspectRatio });
+      }
+    });
+    resizeObserver.observe(courtElement);
+    return () => resizeObserver.disconnect();
+  }, []);
+  
+  // --- Set initial position ---
+  useEffect(() => {
+    if (courtSize.width > 0 && !isTracking) {
+      setPlayerPosition(serviceLineCenterPos);
+    }
+  }, [courtSize, isTracking, serviceLineCenterPos]);
+
+  const spawnNewCard = useCallback(() => {
+    if (courtSize.width === 0) return;
+    setSpawnedCard({
+      id: `card-${Date.now()}`,
+      position: { x: Math.random() * (courtSize.width - cardSize), y: Math.random() * (courtSize.height - cardSize) },
+    });
+  }, [courtSize, cardSize]);
+
+  useEffect(() => {
+    if (isTracking) {
+      const interval = setInterval(() => { if (!spawnedCard) spawnNewCard(); }, 30000);
+      if (!spawnedCard) spawnNewCard();
+      return () => clearInterval(interval);
+    }
+  }, [isTracking, spawnNewCard, spawnedCard]);
+  
+  useEffect(() => {
+    if (spawnedCard && courtSize.width > 0) {
+      const dx = playerPosition.x - (spawnedCard.position.x + cardSize / 2);
+      const dy = playerPosition.y - (spawnedCard.position.y + cardSize / 2);
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      if (distance < collectionRadius) {
+        setMessage('Rackard Coletada!');
+        onCollect({ name: 'Nova Rackard', description: 'Coletada na quadra', power: Math.floor(Math.random() * 50) + 20 });
+        setSpawnedCard(null);
+        setTimeout(() => { if(isTracking) setMessage('Continue se movendo!'); }, 2000);
+      }
+    }
+  }, [playerPosition, spawnedCard, onCollect, isTracking, cardSize, collectionRadius, courtSize]);
 
   return (
     <div className="p-4 flex flex-col items-center animate-fade-in">
         <h2 className="text-3xl font-bold mb-2 text-center text-tennis-accent">Court Collect</h2>
-        <p className="text-center text-tennis-light/70 mb-4 h-5">{isTracking ? cardHint : message}</p>
+        <div className="text-center text-tennis-light/70 mb-4 h-12 flex flex-col justify-center items-center">
+          <p>{message}</p>
+          {isTracking && (
+            <div className="font-mono text-sm flex gap-4">
+              <span>X: {displacement.x.toFixed(1)}m</span>
+              <span>Y: {displacement.y.toFixed(1)}m</span>
+              <span>DIR: {Math.round(heading)}°</span>
+            </div>
+          )}
+        </div>
         
         {!isTracking && (
-             <button onClick={handleSync} className="mb-4 bg-tennis-green hover:bg-tennis-green/80 text-tennis-dark font-bold py-2.5 px-8 rounded-lg transition-colors">
+             <button onClick={handleSync} className="mb-4 bg-tennis-green hover:bg-tennis-green/80 text-tennis-dark font-bold py-3 px-8 rounded-lg transition-colors">
                 Sincronizar Posição
             </button>
         )}
 
         <div 
             ref={courtContainerRef}
-            className="relative bg-tennis-blue border-4 border-white overflow-hidden w-full max-w-lg mx-auto" 
+            className="relative bg-tennis-blue border-4 border-white overflow-hidden w-full max-w-4xl mx-auto" 
             style={{ height: courtSize.height > 0 ? courtSize.height : 'auto', minHeight: courtSize.height > 0 ? 'auto' : '300px' }}
         >
             {courtSize.width > 0 && (
                 <>
-                    {/* Net */}
+                    <div className="absolute top-0 left-0 w-full h-full" style={{
+                      backgroundImage: `linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(to right, rgba(255,255,255,0.1) 1px, transparent 1px)`,
+                      backgroundSize: `${pixelsPerMeter}px ${pixelsPerMeter}px`,
+                    }} />
                     <div className="absolute top-0 left-0 w-full h-1 bg-white/50" />
                     
                     {isTracking && (
                         <div 
-                            className="absolute bg-tennis-accent rounded-full"
+                            className="absolute bg-tennis-accent rounded-full flex items-center justify-center transition-all duration-100 ease-linear"
                             style={{ 
                                 width: playerSize, 
                                 height: playerSize,
-                                top: playerPosition.y,
-                                left: playerPosition.x,
+                                transform: `translate(${playerPosition.x - playerSize/2}px, ${playerPosition.y - playerSize/2}px)`,
                             }}
-                        />
+                        >
+                          <div className="w-1 h-1/2 bg-tennis-dark origin-bottom" style={{ transform: `rotate(${heading}deg) translateY(-25%)` }} />
+                        </div>
                     )}
 
                     {spawnedCard && isTracking && (
