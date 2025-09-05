@@ -51,7 +51,7 @@ export const BattleView: React.FC<BattleViewProps> = ({ deck, onDefeat, onVictor
         </p>
       ) : (
         <div className="mx-auto p-4 bg-tennis-blue/50 rounded-lg">
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {deck.map((card) => (
               <Card 
                 key={card.id} 

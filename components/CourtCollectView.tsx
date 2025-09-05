@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import type { Rackard } from '../types';
 
 // --- Real World Dimensions (in meters) ---
-const REAL_COURT_LENGTH_METERS = 23.77; // Baseline to baseline
+const REAL_COURT_HEIGHT_METERS = 11.88; // Half court length (baseline to net)
 const REAL_COURT_WIDTH_METERS = 8.23;  // Singles court width
 const REAL_SERVICE_LINE_FROM_NET_METERS = 6.4;
 
@@ -29,7 +29,7 @@ export const CourtCollectView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id
     }
     const ppm = courtSize.width / REAL_COURT_WIDTH_METERS;
     const pSize = ppm; // Player is 1 meter wide
-    const serviceLineY = (courtSize.height / 2) + (REAL_SERVICE_LINE_FROM_NET_METERS * ppm);
+    const serviceLineY = REAL_SERVICE_LINE_FROM_NET_METERS * ppm;
     const slcp = {
       x: courtSize.width / 2 - pSize / 2,
       y: serviceLineY - pSize / 2,
@@ -51,7 +51,7 @@ export const CourtCollectView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id
     const resizeObserver = new ResizeObserver(() => {
       const containerWidth = courtElement.offsetWidth;
       if (containerWidth > 0) {
-        const aspectRatio = REAL_COURT_LENGTH_METERS / REAL_COURT_WIDTH_METERS;
+        const aspectRatio = REAL_COURT_HEIGHT_METERS / REAL_COURT_WIDTH_METERS;
         setCourtSize({
           width: containerWidth,
           height: containerWidth * aspectRatio,
@@ -72,9 +72,9 @@ export const CourtCollectView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id
 
   const cardHint = useMemo(() => {
     if (!spawnedCard) return "Nenhuma Rackard por perto... Continue se movendo!";
-    if (spawnedCard.position.y < courtSize.height / 2 + 50) {
+    if (spawnedCard.position.y < courtSize.height * 0.3) {
       return "Dica: A carta está perto da rede!";
-    } else if (spawnedCard.position.y > courtSize.height * 0.85) {
+    } else if (spawnedCard.position.y > courtSize.height * 0.7) {
       return "Dica: A carta está no fundo da sua quadra!";
     } else {
       return "Dica: A carta está no meio da sua quadra!";
@@ -87,7 +87,7 @@ export const CourtCollectView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id
       id: `card-${Date.now()}`,
       position: {
         x: Math.random() * (courtSize.width - cardSize),
-        y: Math.random() * (courtSize.height / 2) + (courtSize.height / 2),
+        y: Math.random() * (courtSize.height - cardSize),
       },
     });
   }, [courtSize, cardSize]);
@@ -189,13 +189,13 @@ export const CourtCollectView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id
 
         <div 
             ref={courtContainerRef}
-            className="relative bg-tennis-blue border-4 border-white overflow-hidden w-full" 
+            className="relative bg-tennis-blue border-4 border-white overflow-hidden w-full max-w-lg mx-auto" 
             style={{ height: courtSize.height > 0 ? courtSize.height : 'auto', minHeight: courtSize.height > 0 ? 'auto' : '300px' }}
         >
             {courtSize.width > 0 && (
                 <>
                     {/* Net */}
-                    <div className="absolute top-1/2 left-0 w-full h-1 bg-white/50 transform -translate-y-1/2" />
+                    <div className="absolute top-0 left-0 w-full h-1 bg-white/50" />
                     
                     {isTracking && (
                         <div 
@@ -205,7 +205,6 @@ export const CourtCollectView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id
                                 height: playerSize,
                                 top: playerPosition.y,
                                 left: playerPosition.x,
-                                transition: 'top 0.5s linear, left 0.5s linear'
                             }}
                         />
                     )}

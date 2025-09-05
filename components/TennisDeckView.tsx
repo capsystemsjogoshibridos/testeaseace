@@ -17,7 +17,7 @@ export const TennisDeckView: React.FC<TennisDeckViewProps> = ({ deck, onSelectCa
           Seu deck está vazio. Vá para 'Court Collect' para encontrar novas Rackards!
         </p>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
           {deck.map((card) => (
             <Card key={card.id} card={card} onClick={() => onSelectCard(card)} />
           ))}
