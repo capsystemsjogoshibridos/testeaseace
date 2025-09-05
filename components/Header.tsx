@@ -19,7 +19,7 @@ export const Header: React.FC<HeaderProps> = ({ setCurrentView, currentView }) =
     return (
       <button 
         onClick={() => setCurrentView(view)}
-        className={`px-4 py-2 text-sm font-semibold rounded-md transition-all duration-300 ${
+        className={`px-5 py-2.5 text-base font-semibold rounded-md transition-all duration-300 ${
           isActive
             ? 'bg-tennis-accent text-tennis-dark shadow-lg'
             : 'bg-tennis-blue text-tennis-light hover:bg-tennis-accent/80 hover:text-tennis-dark'
@@ -37,7 +37,7 @@ export const Header: React.FC<HeaderProps> = ({ setCurrentView, currentView }) =
             className="text-3xl font-black text-tennis-accent cursor-pointer"
             onClick={() => setCurrentView('home')}
         >
-            Ás&Ace V.5.2
+            Ás&Ace V.5.3
         </h1>
         <nav className="flex items-center space-x-2 md:space-x-4">
           {navItems.map(item => (

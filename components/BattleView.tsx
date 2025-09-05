@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import type { Rackard } from '../types';
 import { Card } from './Card';
@@ -80,7 +79,7 @@ export const BattleView: React.FC<BattleViewProps> = ({ deck, onDefeat, onVictor
                 />
                  <button 
                     onClick={handleClaim}
-                    className="w-full max-w-xs bg-tennis-green hover:bg-tennis-green/80 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+                    className="w-full max-w-xs bg-tennis-green hover:bg-tennis-green/80 text-white font-bold py-2.5 px-6 rounded-lg transition-colors"
                 >
                     OK
                 </button>
@@ -89,13 +88,13 @@ export const BattleView: React.FC<BattleViewProps> = ({ deck, onDefeat, onVictor
             <div className="flex justify-center gap-4">
               <button 
                 onClick={handleVictory}
-                className="bg-tennis-green hover:bg-tennis-green/80 text-white font-bold py-2 px-6 rounded-lg transition-colors"
+                className="bg-tennis-green hover:bg-tennis-green/80 text-white font-bold py-2.5 px-8 rounded-lg transition-colors"
               >
                 Vitória
               </button>
               <button 
                 onClick={handleDefeat}
-                className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg transition-colors"
+                className="bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 px-8 rounded-lg transition-colors"
               >
                 Derrota
               </button>

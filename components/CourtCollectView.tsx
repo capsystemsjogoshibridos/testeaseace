@@ -182,7 +182,7 @@ export const CourtCollectView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id
         <p className="text-center text-tennis-light/70 mb-4 h-5">{isTracking ? cardHint : message}</p>
         
         {!isTracking && (
-             <button onClick={handleSync} className="mb-4 bg-tennis-green hover:bg-tennis-green/80 text-tennis-dark font-bold py-2 px-6 rounded-lg transition-colors">
+             <button onClick={handleSync} className="mb-4 bg-tennis-green hover:bg-tennis-green/80 text-tennis-dark font-bold py-2.5 px-8 rounded-lg transition-colors">
                 Sincronizar Posição
             </button>
         )}

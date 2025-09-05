@@ -98,7 +98,7 @@ const App: React.FC = () => {
             <button
                 onClick={handleRandomButtonClick}
                 disabled={isLoading}
-                className="bg-tennis-accent text-tennis-dark font-bold py-3 px-8 rounded-lg transition-transform transform hover:scale-105 disabled:bg-gray-500 disabled:cursor-not-allowed"
+                className="bg-tennis-accent text-tennis-dark font-bold py-3.5 px-10 rounded-lg transition-transform transform hover:scale-105 disabled:bg-gray-500 disabled:cursor-not-allowed"
             >
                 {isLoading ? "Gerando..." : "RANDOM"}
             </button>
