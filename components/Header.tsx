@@ -30,13 +30,13 @@ export const Header: React.FC<HeaderProps> = ({ setCurrentView, currentView }) =
   };
 
   return (
-    <header className="bg-tennis-blue/50 backdrop-blur-sm p-4 sticky top-0 z-40">
+    <header className="bg-tennis-blue/50 backdrop-blur-sm p-4 sticky top-0 z-40 shrink-0">
       <div className="container mx-auto flex justify-between items-center">
         <h1 
             className="text-3xl font-black text-tennis-accent cursor-pointer"
             onClick={() => setCurrentView('home')}
         >
-            Ás&Ace V.2
+            Ás&Ace V.4
         </h1>
         <nav className="flex items-center space-x-2 md:space-x-4">
           {navItems.map(item => (

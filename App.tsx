@@ -87,7 +87,7 @@ const App: React.FC = () => {
       case 'home':
       default:
         return (
-          <div className="flex flex-col items-center justify-center text-center p-8 min-h-[60vh]">
+          <div className="flex flex-col items-center justify-center text-center p-8 flex-grow">
             <h2 className="text-4xl font-bold mb-4 text-tennis-accent">Bem-vindo ao Ás&Ace!</h2>
             <p className="max-w-2xl mb-8 text-lg text-tennis-light/80">
               Colecione cartas poderosas, as Rackards, compita em batalhas emocionantes e domine a quadra de uma maneira totalmente nova. Navegue pelas seções acima para começar sua jornada.
@@ -106,9 +106,9 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-tennis-dark font-sans">
+    <div className="w-full max-w-md mx-auto bg-tennis-dark font-sans shadow-2xl rounded-2xl overflow-hidden flex flex-col h-[90vh] max-h-[800px]">
       <Header setCurrentView={setCurrentView} currentView={currentView} />
-      <main className="container mx-auto">
+      <main className="flex-grow overflow-y-auto">
         {renderView()}
       </main>
       
