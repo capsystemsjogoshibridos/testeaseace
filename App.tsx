@@ -4,6 +4,7 @@ import { Header } from './components/Header';
 import { TennisDeckView } from './components/TennisDeckView';
 import { BattleView } from './components/BattleView';
 import { CourtCollectView } from './components/CourtCollectView';
+import { RunCollectView } from './components/RunCollectView';
 import { Modal } from './components/Modal';
 import { CardDetails } from './components/Card';
 import { generateRandomRackard } from './services/geminiService';
@@ -82,6 +83,8 @@ const App: React.FC = () => {
         return <TennisDeckView deck={tennisDeck} onSelectCard={setSelectedCard} />;
       case 'collect':
         return <CourtCollectView onCollect={handleCollectCard} />;
+      case 'run-collect':
+        return <RunCollectView onCollect={handleCollectCard} />;
       case 'battle':
         return <BattleView deck={tennisDeck} onDefeat={handleDefeat} onVictory={handleVictory} />;
       case 'home':

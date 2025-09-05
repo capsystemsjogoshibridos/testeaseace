@@ -7,4 +7,4 @@ export interface Rackard {
   imageUrl: string;
 }
 
-export type View = 'home' | 'deck' | 'collect' | 'battle';
+export type View = 'home' | 'deck' | 'collect' | 'battle' | 'run-collect';
