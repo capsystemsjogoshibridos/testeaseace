@@ -1,10 +1,5 @@
 
-export interface Rackard {
-  id: string;
-  name: string;
-  description: string;
-  power: number;
-  imageUrl: string;
+export interface Position {
+  x: number;
+  y: number;
 }
-
-export type View = 'home' | 'deck' | 'collect' | 'battle' | 'run-collect';

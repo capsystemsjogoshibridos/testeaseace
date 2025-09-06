@@ -1,7 +1,5 @@
+
 {
-  "name": "Ás&Ace",
-  "description": "Colecione Rackards, jogue na quadra real e batalhe com seus amigos neste jogo de cartas deênis.",
-  "requestFramePermissions": [
-    "geolocation"
-  ]
+  "name": "Tennis Power Ups",
+  "description": "A game where you move your device to collect power-ups on a virtual tennis court. It uses device motion sensors to control your movement and simulate playing on the court."
 }
