@@ -11,6 +11,7 @@ export const Header: React.FC<HeaderProps> = ({ setCurrentView, currentView }) =
     { view: 'deck', label: 'Meu Tennisdeck' },
     { view: 'collect', label: 'Court Collect' },
     { view: 'run-collect', label: 'Run Collect' },
+    { view: 'radar', label: 'Radar' },
     { view: 'battle', label: 'Batalha' },
   ];
 
