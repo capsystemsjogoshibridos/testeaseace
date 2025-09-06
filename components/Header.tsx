@@ -37,7 +37,7 @@ export const Header: React.FC<HeaderProps> = ({ setCurrentView, currentView }) =
             className="text-3xl font-black text-tennis-accent cursor-pointer"
             onClick={() => setCurrentView('home')}
         >
-            Ás&Ace V.5.4
+            Ás&Ace V.5.5
         </h1>
         <nav className="flex items-center space-x-2 md:space-x-4">
           {navItems.map(item => (

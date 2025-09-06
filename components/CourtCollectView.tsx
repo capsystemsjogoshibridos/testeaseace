@@ -20,12 +20,10 @@ export const CourtCollectView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id
   const [courtSize, setCourtSize] = useState({ width: 0, height: 0 });
   const [heading, setHeading] = useState(0);
   const [displacement, setDisplacement] = useState({x: 0, y: 0});
+  const [courtOffset, setCourtOffset] = useState({x: 0, y: 0});
 
   const courtContainerRef = useRef<HTMLDivElement>(null);
   const watchId = useRef<number | null>(null);
-  const animationFrameId = useRef<number | null>(null);
-  const targetPosition = useRef({x: 0, y: 0});
-  const currentPosition = useRef({x: 0, y: 0});
 
   const { pixelsPerMeter, playerSize, cardSize, collectionRadius, serviceLineCenterPos } = useMemo(() => {
     if (courtSize.width === 0) return { pixelsPerMeter: 0, playerSize: 0, cardSize: 0, collectionRadius: 0, serviceLineCenterPos: { x: 0, y: 0 } };
@@ -66,8 +64,6 @@ export const CourtCollectView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id
       (position) => {
         const { latitude, longitude } = position.coords;
         setStartCoords({ lat: latitude, lon: longitude });
-        currentPosition.current = serviceLineCenterPos;
-        targetPosition.current = serviceLineCenterPos;
         setPlayerPosition(serviceLineCenterPos);
         setIsTracking(true);
         setMessage('Sincronizado! Mova-se no mundo real.');
@@ -77,28 +73,6 @@ export const CourtCollectView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id
       }
     );
   };
-  
-  // Game Loop for smooth movement
-  useEffect(() => {
-    if (isTracking) {
-      const loop = () => {
-        const dx = targetPosition.current.x - currentPosition.current.x;
-        const dy = targetPosition.current.y - currentPosition.current.y;
-        
-        // Smooth interpolation
-        currentPosition.current.x += dx * 0.1;
-        currentPosition.current.y += dy * 0.1;
-        
-        setPlayerPosition({ ...currentPosition.current });
-        animationFrameId.current = requestAnimationFrame(loop);
-      };
-      animationFrameId.current = requestAnimationFrame(loop);
-      
-      return () => {
-        if(animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
-      }
-    }
-  }, [isTracking]);
 
   // GPS and Sensor Listeners
   useEffect(() => {
@@ -129,10 +103,10 @@ export const CourtCollectView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id
 
         setDisplacement({ x: dx_meters, y: dy_meters });
         
-        targetPosition.current = {
+        setPlayerPosition({
           x: serviceLineCenterPos.x + dx_meters * pixelsPerMeter,
           y: serviceLineCenterPos.y - dy_meters * pixelsPerMeter
-        };
+        });
       };
 
       watchId.current = navigator.geolocation.watchPosition(handlePositionUpdate, () => {}, { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 });
@@ -143,6 +117,18 @@ export const CourtCollectView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id
       };
     }
   }, [isTracking, startCoords, pixelsPerMeter, serviceLineCenterPos]);
+  
+  // Update court offset to center player
+  useEffect(() => {
+    if (!courtContainerRef.current) return;
+    const viewWidth = courtContainerRef.current.offsetWidth;
+    const viewHeight = courtContainerRef.current.offsetHeight;
+
+    setCourtOffset({
+      x: viewWidth / 2 - playerPosition.x,
+      y: viewHeight / 2 - playerPosition.y,
+    });
+  }, [playerPosition, courtSize]);
 
   // --- Resize Observer ---
   useEffect(() => {
@@ -223,35 +209,48 @@ export const CourtCollectView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id
         >
             {courtSize.width > 0 && (
                 <>
-                    <div className="absolute top-0 left-0 w-full h-full" style={{
-                      backgroundImage: `linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(to right, rgba(255,255,255,0.1) 1px, transparent 1px)`,
-                      backgroundSize: `${pixelsPerMeter}px ${pixelsPerMeter}px`,
-                    }} />
-                    <div className="absolute top-0 left-0 w-full h-1 bg-white/50" />
+                    {/* World container that moves */}
+                    <div
+                      className="absolute top-0 left-0 transition-transform duration-100 ease-linear"
+                      style={{
+                        width: courtSize.width,
+                        height: courtSize.height,
+                        transform: `translate(${courtOffset.x}px, ${courtOffset.y}px)`,
+                      }}
+                    >
+                      <div className="absolute top-0 left-0 w-full h-full" style={{
+                        backgroundImage: `linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(to right, rgba(255,255,255,0.1) 1px, transparent 1px)`,
+                        backgroundSize: `${pixelsPerMeter}px ${pixelsPerMeter}px`,
+                      }} />
+                      <div className="absolute top-0 left-0 w-full h-1 bg-white/50" />
+                      
+                      {spawnedCard && isTracking && (
+                          <div 
+                              className="absolute bg-yellow-400 rounded-md animate-pulse"
+                              style={{ 
+                                  width: cardSize, 
+                                  height: cardSize, 
+                                  top: spawnedCard.position.y,
+                                  left: spawnedCard.position.x,
+                              }}
+                          />
+                      )}
+                    </div>
                     
+                    {/* Player representation (fixed in the center) */}
                     {isTracking && (
                         <div 
-                            className="absolute bg-tennis-accent rounded-full flex items-center justify-center transition-all duration-100 ease-linear"
+                            className="absolute bg-tennis-accent rounded-full flex items-center justify-center"
                             style={{ 
+                                top: '50%',
+                                left: '50%',
                                 width: playerSize, 
                                 height: playerSize,
-                                transform: `translate(${playerPosition.x - playerSize/2}px, ${playerPosition.y - playerSize/2}px)`,
+                                transform: `translate(-50%, -50%)`,
                             }}
                         >
                           <div className="w-1 h-1/2 bg-tennis-dark origin-bottom" style={{ transform: `rotate(${heading}deg) translateY(-25%)` }} />
                         </div>
-                    )}
-
-                    {spawnedCard && isTracking && (
-                        <div 
-                            className="absolute bg-yellow-400 rounded-md animate-pulse"
-                            style={{ 
-                                width: cardSize, 
-                                height: cardSize, 
-                                top: spawnedCard.position.y,
-                                left: spawnedCard.position.x,
-                            }}
-                        />
                     )}
                 </>
             )}
