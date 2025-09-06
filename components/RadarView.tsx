@@ -5,17 +5,19 @@ import type { Rackard } from '../types';
 const REAL_COURT_HEIGHT_METERS = 11.88; // Half court length (baseline to net)
 const REAL_COURT_WIDTH_METERS = 8.23;  // Singles court width
 const REAL_SERVICE_LINE_FROM_NET_METERS = 6.4;
+const STAR_COLORS = ['#FFD700', '#FF6347', '#ADFF2F', '#87CEEB', '#DA70D6', '#FFA500'];
 
 interface SpawnedCard {
   id: string;
   position: { x: number; y: number };
+  color: string;
 }
 
 export const RadarView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id' | 'imageUrl'>) => void}> = ({ onCollect }) => {
   const [isTracking, setIsTracking] = useState(false);
   const [startCoords, setStartCoords] = useState<{ lat: number; lon: number } | null>(null);
   const [playerPosition, setPlayerPosition] = useState({x: 0, y: 0});
-  const [spawnedCard, setSpawnedCard] = useState<SpawnedCard | null>(null);
+  const [spawnedCards, setSpawnedCards] = useState<SpawnedCard[]>([]);
   const [message, setMessage] = useState('Sincronize sua posição para começar.');
   const [courtSize, setCourtSize] = useState({ width: 0, height: 0 });
   const [heading, setHeading] = useState(0);
@@ -24,23 +26,23 @@ export const RadarView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id' | 'im
 
   const courtContainerRef = useRef<HTMLDivElement>(null);
   const watchId = useRef<number | null>(null);
+  const trailCanvasRef = useRef<HTMLCanvasElement>(null);
+  const lastTrailPosition = useRef<{x: number, y: number} | null>(null);
 
   const { pixelsPerMeter, playerSize, cardSize, collectionRadius, serviceLineCenterPos } = useMemo(() => {
     if (courtSize.width === 0) return { pixelsPerMeter: 0, playerSize: 0, cardSize: 0, collectionRadius: 0, serviceLineCenterPos: { x: 0, y: 0 } };
     const ppm = courtSize.width / REAL_COURT_WIDTH_METERS;
-    const pSize = ppm;
+    const pSize = ppm * 1.2;
     const serviceLineY = REAL_SERVICE_LINE_FROM_NET_METERS * ppm;
     const slcp = { x: courtSize.width / 2, y: serviceLineY };
-    return { pixelsPerMeter: ppm, playerSize: pSize, cardSize: pSize, collectionRadius: pSize * 1.5, serviceLineCenterPos: slcp };
+    return { pixelsPerMeter: ppm, playerSize: pSize, cardSize: pSize, collectionRadius: pSize, serviceLineCenterPos: slcp };
   }, [courtSize]);
   
   const requestOrientationPermission = async () => {
     if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
       try {
         const permission = await (DeviceOrientationEvent as any).requestPermission();
-        if (permission === 'granted') {
-          return true;
-        }
+        if (permission === 'granted') return true;
         setMessage("Permissão para sensor de orientação negada.");
         return false;
       } catch (error) {
@@ -48,7 +50,7 @@ export const RadarView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id' | 'im
         return false;
       }
     }
-    return true; // For browsers that don't require permission
+    return true;
   };
 
   const handleSync = async () => {
@@ -66,18 +68,20 @@ export const RadarView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id' | 'im
         setStartCoords({ lat: latitude, lon: longitude });
         setPlayerPosition(serviceLineCenterPos);
         setIsTracking(true);
+        setSpawnedCards([]);
+        lastTrailPosition.current = null;
+        if (trailCanvasRef.current) {
+          const ctx = trailCanvasRef.current.getContext('2d');
+          ctx?.clearRect(0, 0, trailCanvasRef.current.width, trailCanvasRef.current.height);
+        }
         setMessage('Sincronizado! Mova-se no mundo real.');
       },
-      (error) => {
-        setMessage(`Erro: ${error.message}.`);
-      }
+      (error) => setMessage(`Erro: ${error.message}.`)
     );
   };
 
-  // GPS and Sensor Listeners
   useEffect(() => {
     if (isTracking && startCoords && pixelsPerMeter > 0) {
-      // Orientation
       const handleOrientation = (event: DeviceOrientationEvent) => {
         const orientationEvent = event as any;
         let newHeading = 0;
@@ -90,16 +94,15 @@ export const RadarView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id' | 'im
       };
       window.addEventListener('deviceorientation', handleOrientation);
 
-      // Position
       const handlePositionUpdate = (position: GeolocationPosition) => {
         const { latitude, longitude } = position.coords;
-        const R = 6371e3; // Earth radius in meters
+        const R = 6371e3;
         const dLat = (latitude - startCoords.lat) * (Math.PI / 180);
         const dLon = (longitude - startCoords.lon) * (Math.PI / 180);
         const startLatRad = startCoords.lat * (Math.PI / 180);
         
-        const dy_meters = dLat * R; // Forward/backward
-        const dx_meters = dLon * R * Math.cos(startLatRad); // Left/right
+        const dy_meters = dLat * R;
+        const dx_meters = dLon * R * Math.cos(startLatRad);
 
         setDisplacement({ x: dx_meters, y: dy_meters });
         
@@ -118,7 +121,6 @@ export const RadarView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id' | 'im
     }
   }, [isTracking, startCoords, pixelsPerMeter, serviceLineCenterPos]);
   
-  // Update court offset to center player
   useEffect(() => {
     if (!courtContainerRef.current) return;
     const viewWidth = courtContainerRef.current.offsetWidth;
@@ -130,7 +132,6 @@ export const RadarView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id' | 'im
     });
   }, [playerPosition, courtSize]);
 
-  // --- Resize Observer ---
   useEffect(() => {
     const courtElement = courtContainerRef.current;
     if (!courtElement) return;
@@ -145,7 +146,6 @@ export const RadarView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id' | 'im
     return () => resizeObserver.disconnect();
   }, []);
   
-  // --- Set initial position ---
   useEffect(() => {
     if (courtSize.width > 0 && !isTracking) {
       setPlayerPosition(serviceLineCenterPos);
@@ -154,33 +154,68 @@ export const RadarView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id' | 'im
 
   const spawnNewCard = useCallback(() => {
     if (courtSize.width === 0) return;
-    setSpawnedCard({
+    const newCard: SpawnedCard = {
       id: `card-${Date.now()}`,
       position: { x: Math.random() * (courtSize.width - cardSize), y: Math.random() * (courtSize.height - cardSize) },
-    });
+      color: STAR_COLORS[Math.floor(Math.random() * STAR_COLORS.length)],
+    };
+    setSpawnedCards(prev => [...prev, newCard]);
   }, [courtSize, cardSize]);
 
   useEffect(() => {
     if (isTracking) {
-      const interval = setInterval(() => { if (!spawnedCard) spawnNewCard(); }, 30000);
-      if (!spawnedCard) spawnNewCard();
+      const interval = setInterval(spawnNewCard, 30000);
+      spawnNewCard();
       return () => clearInterval(interval);
     }
-  }, [isTracking, spawnNewCard, spawnedCard]);
+  }, [isTracking, spawnNewCard]);
   
   useEffect(() => {
-    if (spawnedCard && courtSize.width > 0) {
-      const dx = playerPosition.x - (spawnedCard.position.x + cardSize / 2);
-      const dy = playerPosition.y - (spawnedCard.position.y + cardSize / 2);
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      if (distance < collectionRadius) {
+    if (spawnedCards.length > 0 && courtSize.width > 0) {
+      let collectedCardId: string | null = null;
+      for(const card of spawnedCards) {
+        const dx = (playerPosition.x) - (card.position.x + cardSize / 2);
+        const dy = (playerPosition.y) - (card.position.y + cardSize / 2);
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance < collectionRadius) {
+          collectedCardId = card.id;
+          break;
+        }
+      }
+
+      if (collectedCardId) {
         setMessage('Rackard Coletada!');
         onCollect({ name: 'Nova Rackard', description: 'Coletada no radar', power: Math.floor(Math.random() * 50) + 20 });
-        setSpawnedCard(null);
+        setSpawnedCards(prev => prev.filter(c => c.id !== collectedCardId));
         setTimeout(() => { if(isTracking) setMessage('Continue se movendo!'); }, 2000);
       }
     }
-  }, [playerPosition, spawnedCard, onCollect, isTracking, cardSize, collectionRadius, courtSize]);
+  }, [playerPosition, spawnedCards, onCollect, isTracking, cardSize, collectionRadius, courtSize]);
+
+  useEffect(() => {
+    if (isTracking && trailCanvasRef.current && courtSize.width > 0) {
+        const canvas = trailCanvasRef.current;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+            if(canvas.width !== courtSize.width || canvas.height !== courtSize.height) {
+                canvas.width = courtSize.width;
+                canvas.height = courtSize.height;
+                lastTrailPosition.current = null;
+            }
+            if (lastTrailPosition.current) {
+                ctx.beginPath();
+                ctx.moveTo(lastTrailPosition.current.x, lastTrailPosition.current.y);
+                ctx.lineTo(playerPosition.x, playerPosition.y);
+                ctx.strokeStyle = '#a3e635'; // tennis-green
+                ctx.lineWidth = playerSize * 0.15;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+            }
+            lastTrailPosition.current = { x: playerPosition.x, y: playerPosition.y };
+        }
+    }
+  }, [playerPosition, isTracking, courtSize, playerSize]);
 
   return (
     <div className="p-4 flex flex-col items-center animate-fade-in">
@@ -209,7 +244,10 @@ export const RadarView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id' | 'im
         >
             {courtSize.width > 0 && (
                 <>
-                    {/* World container that moves */}
+                    <div className="absolute top-0 left-0 w-full h-full" style={{
+                      backgroundImage: `linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(to right, rgba(255,255,255,0.1) 1px, transparent 1px)`,
+                      backgroundSize: `${pixelsPerMeter}px ${pixelsPerMeter}px`,
+                    }} />
                     <div
                       className="absolute top-0 left-0 transition-transform duration-100 ease-linear"
                       style={{
@@ -218,26 +256,30 @@ export const RadarView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id' | 'im
                         transform: `translate(${courtOffset.x}px, ${courtOffset.y}px)`,
                       }}
                     >
-                      <div className="absolute top-0 left-0 w-full h-full" style={{
-                        backgroundImage: `linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(to right, rgba(255,255,255,0.1) 1px, transparent 1px)`,
-                        backgroundSize: `${pixelsPerMeter}px ${pixelsPerMeter}px`,
-                      }} />
+                      <canvas
+                        ref={trailCanvasRef}
+                        className="absolute top-0 left-0"
+                        width={courtSize.width}
+                        height={courtSize.height}
+                      />
                       <div className="absolute top-0 left-0 w-full h-1 bg-white/50" />
                       
-                      {spawnedCard && isTracking && (
+                      {spawnedCards.map((card) => (
                           <div 
-                              className="absolute bg-yellow-400 rounded-md animate-pulse"
+                              key={card.id}
+                              className="absolute"
                               style={{ 
                                   width: cardSize, 
                                   height: cardSize, 
-                                  top: spawnedCard.position.y,
-                                  left: spawnedCard.position.x,
+                                  top: card.position.y,
+                                  left: card.position.x,
+                                  backgroundColor: card.color,
+                                  clipPath: 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)'
                               }}
                           />
-                      )}
+                      ))}
                     </div>
                     
-                    {/* Player representation (fixed in the center) */}
                     {isTracking && (
                         <div 
                             className="absolute bg-tennis-accent rounded-full flex items-center justify-center animate-radar-ping"
@@ -249,7 +291,18 @@ export const RadarView: React.FC<{onCollect: (baseCard: Omit<Rackard, 'id' | 'im
                                 transform: `translate(-50%, -50%)`,
                             }}
                         >
-                          <div className="w-1 h-1/2 bg-tennis-dark origin-bottom" style={{ transform: `rotate(${heading}deg) translateY(-25%)` }} />
+                          <div 
+                            className="absolute"
+                            style={{
+                                top: '50%', left: '50%',
+                                transform: `translate(-50%, -100%) rotate(${heading}deg)`,
+                                transformOrigin: '50% 100%',
+                                width: 0, height: 0,
+                                borderLeft: `${playerSize * 0.2}px solid transparent`,
+                                borderRight: `${playerSize * 0.2}px solid transparent`,
+                                borderBottom: `${playerSize * 0.4}px solid #062a27`, // tennis-dark
+                            }}
+                          />
                         </div>
                     )}
                 </>
